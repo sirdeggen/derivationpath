@@ -1,3 +1,5 @@
+> Historical flow diagram for an earlier implementation. See [the current adversarial review](SECURITY_REVIEW_2026-09-30.md).
+
 # Security Flow Diagram: Private Key Alignment
 
 This document provides visual representations of how private keys are correctly mapped to transaction inputs.

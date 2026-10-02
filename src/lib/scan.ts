@@ -1,6 +1,6 @@
 import type { HD, PrivateKey } from '@bsv/sdk';
 import type { Api } from './net';
-import { deriveKey, templateHasChain } from './derive';
+import { UNIQUE_TEMPLATES, deriveKey, templateHasChain } from './derive';
 import { filterSpendable, protectedSet } from './tokens';
 
 export interface FoundUtxo {
@@ -35,6 +35,7 @@ export interface ScanOptions {
   maxPerChain: number;
   signal?: AbortSignal;
   onProgress?: (message: string) => void;
+  /** Called after a successful uncapped scan, never during a partial scan. */
   onHit?: (hit: AddressHit) => void;
 }
 
@@ -46,15 +47,23 @@ export interface ScanSummary {
   cappedChains: string[];
 }
 
+/** Include the selected custom path when scanning every known preset. */
+export function templatesForScan(selectedTemplate: string, all: boolean): string[] {
+  return all ? [...new Set([...UNIQUE_TEMPLATES, selectedTemplate])] : [selectedTemplate];
+}
+
 /**
  * Gap-limit discovery across one or more templates and chains. Any network
  * failure aborts the whole scan by design: a partial scan presented as
- * "complete" would hide coins from the sweep.
+ * "complete" would hide coins from the sweep. Hits are published only after
+ * the scan returns; chains stopped by the address cap are reported separately.
  */
 export async function scanForUtxos(opts: ScanOptions): Promise<ScanSummary> {
   const { api, root, signal, onProgress, onHit } = opts;
   const hits: AddressHit[] = [];
-  const seen = new Set<string>();   // presets can overlap; don't double count
+  // Presets can overlap. Keep history usage so a duplicate still advances the
+  // current chain's gap counter without another network request.
+  const seen = new Map<string, boolean>();
   const cappedChains: string[] = [];
   let addressesChecked = 0;
   let usedAddresses = 0;
@@ -75,12 +84,16 @@ export async function scanForUtxos(opts: ScanOptions): Promise<ScanSummary> {
         const key = deriveKey(root, template, chain, index);
         index++;
         scanned++;
-        if (seen.has(key.address)) continue;
-        seen.add(key.address);
+        const previouslyUsed = seen.get(key.address);
+        if (previouslyUsed !== undefined) {
+          consecutiveUnused = previouslyUsed ? 0 : consecutiveUnused + 1;
+          continue;
+        }
         addressesChecked++;
         onProgress?.(`Checking ${key.path}: ${key.address}`);
 
         const history = await api.woc.history(key.address);
+        seen.set(key.address, history.length > 0);
         if (!history.length) {
           consecutiveUnused++;
           continue;
@@ -102,9 +115,10 @@ export async function scanForUtxos(opts: ScanOptions): Promise<ScanSummary> {
           protectedCount,
         };
         hits.push(hit);
-        onHit?.(hit);
       }
     }
   }
+  if (signal?.aborted) throw new Error('Scan stopped.');
+  if (!cappedChains.length) for (const hit of hits) onHit?.(hit);
   return { hits, addressesChecked, usedAddresses, protectedTotal, cappedChains };
 }

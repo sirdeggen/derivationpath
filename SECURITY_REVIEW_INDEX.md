@@ -1,3 +1,5 @@
+> Historical review index for an earlier implementation. See [the current adversarial review](SECURITY_REVIEW_2026-09-30.md).
+
 # 🔒 Security Review Index
 
 **Complete security analysis of private key handling in createIngestTx**

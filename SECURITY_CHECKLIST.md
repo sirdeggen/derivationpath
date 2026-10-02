@@ -1,3 +1,5 @@
+> Historical checklist for an earlier implementation. See [the current adversarial review](SECURITY_REVIEW_2026-09-30.md).
+
 # Security Review Checklist
 
 **Project:** Centbee to BRC-100 Fund Recovery Tool
@@ -76,7 +78,7 @@
 ### 5. Transaction Signing (Lines 240-241)
 
 - [x] ✅ Fee calculated before signing
-- [x] ✅ Fee validated (< 110 sats/kb)
+- [x] ✅ Fee checked against the target rate and signed transaction size
 - [x] ✅ Transaction signed with correct keys
 - [x] ✅ Signatures verified by wallet
 - [x] ✅ Unlocking scripts generated correctly

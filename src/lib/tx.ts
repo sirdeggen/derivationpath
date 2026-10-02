@@ -1,6 +1,7 @@
-import { P2PKH, SatoshisPerKilobyte, Transaction, type PrivateKey } from '@bsv/sdk';
+import { P2PKH, SatoshisPerKilobyte, Spend, Transaction, type PrivateKey } from '@bsv/sdk';
 import type { Api } from './net';
 import { isValidAddress } from './derive';
+import { MAX_FEE_PER_KB, MIN_FEE_PER_KB, signedFeeBounds } from './settings';
 
 export interface SpendInput {
   txid: string;
@@ -58,9 +59,30 @@ export async function buildP2pkhTransaction(params: {
 }): Promise<BuiltTx> {
   const { api, inputs, outputs, changeAddress, feePerKb, onProgress } = params;
   if (!inputs.length) throw new Error('No coins to spend.');
+  if (!Number.isSafeInteger(feePerKb) || feePerKb < MIN_FEE_PER_KB || feePerKb > MAX_FEE_PER_KB) {
+    throw new Error(`The fee target must be a whole number from ${MIN_FEE_PER_KB} to ${MAX_FEE_PER_KB} sats per KB.`);
+  }
+  let totalIn = 0;
+  const selectedOutpoints = new Set<string>();
+  for (const input of inputs) {
+    if (!Number.isSafeInteger(input.vout) || input.vout < 0 || !Number.isSafeInteger(input.satoshis) || input.satoshis < 1) {
+      throw new Error('Coin indexes and amounts must be safe, nonnegative whole numbers.');
+    }
+    if (!isValidAddress(input.address) || input.privateKey.toAddress().toString() !== input.address) {
+      throw new Error(`The key for coin ${input.txid}:${input.vout} does not match its address.`);
+    }
+    const outpoint = `${input.txid}:${input.vout}`;
+    if (selectedOutpoints.has(outpoint)) throw new Error(`Coin ${outpoint} was selected twice.`);
+    selectedOutpoints.add(outpoint);
+    totalIn += input.satoshis;
+    if (!Number.isSafeInteger(totalIn)) throw new Error('The total coin amount is too large to calculate safely.');
+  }
+  let requested = 0;
   for (const o of outputs) {
     if (!isValidAddress(o.address)) throw new Error(`"${o.address}" isn't a valid BSV address.`);
-    if (!Number.isInteger(o.satoshis) || o.satoshis < 1) throw new Error('Amounts must be whole sats, at least 1.');
+    if (!Number.isSafeInteger(o.satoshis) || o.satoshis < 1) throw new Error('Amounts must be safe whole sats, at least 1.');
+    requested += o.satoshis;
+    if (!Number.isSafeInteger(requested)) throw new Error('The requested amount is too large to calculate safely.');
   }
   if (!isValidAddress(changeAddress)) throw new Error(`"${changeAddress}" isn't a valid BSV address.`);
 
@@ -70,7 +92,7 @@ export async function buildP2pkhTransaction(params: {
     tx.addInput({
       sourceTransaction: sources.get(input.txid)!,
       sourceOutputIndex: input.vout,
-      unlockingScriptTemplate: new P2PKH().unlock(input.privateKey),
+      unlockingScriptTemplate: new P2PKH().unlock(input.privateKey, 'all', false),
     });
   }
   for (const o of outputs) tx.addOutput({ lockingScript: new P2PKH().lock(o.address), satoshis: o.satoshis });
@@ -81,23 +103,77 @@ export async function buildP2pkhTransaction(params: {
   await tx.fee(feeModel);
   await tx.sign();
 
-  const totalIn = inputs.reduce((s, i) => s + i.satoshis, 0);
-  const totalOut = tx.outputs.reduce((s, o) => s + (o.satoshis ?? 0), 0);
-  const fee = totalIn - totalOut;
+  // The SDK estimates every P2PKH unlocking script at 108 bytes. Actual DER
+  // signatures are often shorter. Rebalance only the change output when the
+  // final fee falls outside the target-rate band. Changing that output also
+  // changes the signature and sometimes its length.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const signedSize = tx.toHex().length / 2;
+    const signedFee = totalIn - tx.outputs.reduce((sum, output) => sum + (output.satoshis ?? 0), 0);
+    const { minimum, preferred, maximum } = signedFeeBounds(signedSize, feePerKb);
+    if (signedFee >= minimum && signedFee <= maximum) break;
+    const change = tx.outputs.find(output => output.change === true);
+    if (!change || typeof change.satoshis !== 'number') break;
+    const adjusted = change.satoshis + signedFee - preferred;
+    if (!Number.isSafeInteger(adjusted) || adjusted < 2) break;
+    change.satoshis = adjusted;
+    await tx.sign();
+  }
+
   const hex = tx.toHex();
   const size = hex.length / 2;
+  if (!Number.isSafeInteger(size) || size < 1) throw new Error('The signed transaction has an invalid size.');
 
-  // tx.fee() silently drops a change output that would be <= 0 instead of
-  // throwing, so insufficient funds shows up here as an underpaid fee.
-  const required = await feeModel.computeFee(tx);
-  if (!tx.outputs.length) throw new Error('Nothing is left to send after the network fee.');
-  if (fee < required) {
-    const requested = outputs.reduce((s, o) => s + o.satoshis, 0);
-    throw new Error(`Not enough funds: you have ${totalIn} sats, but this needs ${requested} sats plus a ${required}-sat fee.`);
+  // The SDK may drop a change output if it cannot fund it. Check the complete
+  // signed transaction before allowing it to be broadcast.
+  if (tx.outputs.length < Math.max(1, outputs.length) || tx.outputs.length > outputs.length + 1) {
+    throw new Error('The signed transaction has an unexpected number of outputs.');
   }
-  if (fee > required + 1000 && fee > required * 2) throw new Error(`The fee came out at ${fee} sats instead of about ${required}, so we stopped.`);
+  let totalOut = 0;
+  for (let i = 0; i < tx.outputs.length; i++) {
+    const output = tx.outputs[i];
+    if (typeof output.satoshis !== 'number' || !Number.isSafeInteger(output.satoshis) || output.satoshis < 1) {
+      throw new Error('The signed transaction has an invalid output amount.');
+    }
+    if (i >= outputs.length && output.satoshis < 2) {
+      throw new Error('The signed transaction leaves only 1 sat at its change or sweep destination, which this tool cannot later spend.');
+    }
+    const expectedAddress = i < outputs.length ? outputs[i].address : changeAddress;
+    if (output.lockingScript.toHex() !== new P2PKH().lock(expectedAddress).toHex()) {
+      throw new Error('The signed transaction has an unexpected destination.');
+    }
+    if (i < outputs.length && output.satoshis !== outputs[i].satoshis) {
+      throw new Error('The signed transaction changed a requested payment amount.');
+    }
+    totalOut += output.satoshis;
+    if (!Number.isSafeInteger(totalOut)) throw new Error('The output total is too large to calculate safely.');
+  }
+  const fee = totalIn - totalOut;
+
+  // Enforce the configured rate against actual serialized, signed bytes.
+  // Comparing with the model alone would accept an overestimated or dropped
+  // change output as an excessive miner fee.
+  const { minimum, maximum } = signedFeeBounds(size, feePerKb);
+  if (fee < minimum) {
+    throw new Error(`Not enough funds: you have ${totalIn} sats, but this needs ${requested} sats plus at least a ${minimum}-sat fee.`);
+  }
+  if (fee > maximum) throw new Error(`The fee came out at ${fee} sats, above the ${maximum}-sat upper tolerance for this signed transaction, so we stopped.`);
   for (let i = 0; i < tx.inputs.length; i++) {
-    if (!tx.inputs[i].unlockingScript) throw new Error(`Coin ${i + 1} couldn't be signed, so we stopped.`);
+    const input = tx.inputs[i];
+    const script = input.unlockingScript;
+    if (!script) throw new Error(`Coin ${i + 1} couldn't be signed, so we stopped.`);
+    if (script.chunks[0]?.data?.at(-1) !== 0x41) {
+      throw new Error(`Coin ${i + 1} was not signed with SIGHASH_ALL | FORKID.`);
+    }
+    const source = input.sourceTransaction!;
+    const sourceOutput = source.outputs[input.sourceOutputIndex];
+    if (!new Spend({
+      sourceTXID: source.id('hex'), sourceOutputIndex: input.sourceOutputIndex,
+      sourceSatoshis: sourceOutput.satoshis!, lockingScript: sourceOutput.lockingScript,
+      transactionVersion: tx.version, otherInputs: tx.inputs.filter((_, index) => index !== i),
+      outputs: tx.outputs, inputIndex: i, unlockingScript: script,
+      inputSequence: input.sequence ?? 0xffffffff, lockTime: tx.lockTime,
+    }).validate()) throw new Error(`Coin ${i + 1} failed signature verification.`);
   }
 
   return { tx, hex, txid: tx.id('hex'), totalIn, totalOut, fee, size };
