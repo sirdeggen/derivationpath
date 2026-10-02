@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Activity, RotateCcw, Save, SlidersHorizontal } from 'lucide-react';
 import { useApp } from '../state';
-import { DEFAULT_SETTINGS, MAX_FEE_PER_KB, isHttps, sanitizeFee } from '../lib/settings';
+import { DEFAULT_SETTINGS, MAX_FEE_PER_KB, MIN_FEE_PER_KB, isHttps, sanitizeFee } from '../lib/settings';
 import { createApi } from '../lib/net';
 import { fmtSats } from '../lib/format';
 import { SectionTitle, Status } from './ui';
@@ -20,14 +20,14 @@ export function SettingsPanel() {
     const explorer = explorerBase.trim();
     if (!isHttps(api)) throw new Error('The data address must start with https://.');
     if (!isHttps(explorer)) throw new Error('The transaction link must start with https://.');
-    const fee = sanitizeFee(feePerKb);
+    const asked = Number(feePerKb.trim());
+    if (!Number.isSafeInteger(asked) || asked < MIN_FEE_PER_KB || asked > MAX_FEE_PER_KB) {
+      throw new Error(`The target fee rate must be a whole number from ${MIN_FEE_PER_KB} to ${fmtSats(MAX_FEE_PER_KB)} sats per KB.`);
+    }
+    const fee = sanitizeFee(asked);
     app.updateSettings({ apiBase: api, explorerBase: explorer, feePerKb: fee });
     setApiBase(api);
     setFeePerKb(String(fee));
-    const asked = Number.parseInt(feePerKb.trim(), 10);
-    if (!Number.isInteger(asked) || asked !== fee) {
-      throw new Error(`The fee must be a whole number from 1 to ${fmtSats(MAX_FEE_PER_KB)}, so we saved ${fmtSats(fee)}. Everything else was saved.`);
-    }
     task.setStatus(`Saved. Network fee: ${fmtSats(fee)} sats per KB.`, 'success');
   });
 
@@ -57,9 +57,9 @@ export function SettingsPanel() {
       <div className="field" style={{ marginTop: 15 }}><LabelWithInfo htmlFor="explorerBase" label="Transaction link" info="The website that opens when you click a transaction to view it. The transaction ID is added to the end of this address." />
         <input id="explorerBase" value={explorerBase} spellCheck={false} onChange={e => setExplorerBase(e.target.value)} />
         <div className="hint">Where "view transaction" links go. The transaction ID is added to the end.</div></div>
-      <div className="field" style={{ marginTop: 15 }}><LabelWithInfo htmlFor="feePerKb" label="Network fee (sats per KB)" info="What you pay miners per kilobyte of transaction. At 100, a simple transfer costs about 20 sats. Too low and miners may ignore it; too high wastes money." />
-        <input id="feePerKb" type="number" min={1} max={MAX_FEE_PER_KB} value={feePerKb} onChange={e => setFeePerKb(e.target.value)} />
-        <div className="hint">Moves into a BRC-100 wallet use that wallet's own fee instead.</div></div>
+      <div className="field" style={{ marginTop: 15 }}><LabelWithInfo htmlFor="feePerKb" label="Target network fee (sats per KB)" info="Choose a target rate for local sends, from 90 to 110 sats per KB. The app checks the final signed fee against this target with a 10 sat/KB tolerance and whole-satoshi rounding." />
+        <input id="feePerKb" type="number" min={MIN_FEE_PER_KB} max={MAX_FEE_PER_KB} value={feePerKb} onChange={e => setFeePerKb(e.target.value)} />
+        <div className="hint">The dated-key destination targets 100 sats per KB; local sends use your selected target.</div></div>
       <div className="actions">
         <button className="btn btn-primary" disabled={task.busy} onClick={save}><Save size={16} /> Save settings</button>
         <button className="btn btn-ghost" disabled={task.busy} onClick={reset}><RotateCcw size={16} /> Reset defaults</button>

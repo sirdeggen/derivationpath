@@ -16,7 +16,7 @@ export interface Preset {
 }
 
 export const PRESETS: Preset[] = [
-  { id: 'centbee', name: 'Centbee', group: 'wallet', icon: 'centbee.png', template: "m/44'/0/0/{index}" },
+  { id: 'centbee', name: 'Centbee', group: 'wallet', icon: 'centbee.png', template: "m/44'/0/{chain}/{index}" },
   { id: 'rock', name: 'RockWallet', group: 'wallet', icon: 'rock.png', template: "m/0'/0/{index}" },
   { id: 'moneybutton', name: 'MoneyButton', group: 'wallet', icon: 'moneybutton.png', template: "m/44'/0'/0'/{chain}/{index}" },
   { id: 'twetch', name: 'Twetch', group: 'wallet', icon: 'twetch.svg', template: "m/44'/0'/0'/{chain}/{index}" },
@@ -28,6 +28,7 @@ export const PRESETS: Preset[] = [
   { id: 'simplycash', name: 'SimplyCash', group: 'wallet', icon: 'simplycash.png', template: "m/44'/145'/0'/{chain}/{index}" },
   { id: 'bip44', name: 'BIP44 default', group: 'standard', template: "m/44'/0'/0'/{chain}/{index}" },
   { id: 'bip32', name: 'BIP32 basic', group: 'standard', template: "m/0'/{chain}'/{index}'" },
+  { id: 'legacycentbee', name: 'Legacy Centbee receive only', group: 'standard', template: "m/44'/0/0/{index}" },
   // The two prefixes this tool originally shipped as "Electrum SV" and
   // "Common elsewhere". Kept so earlier recoveries remain reproducible.
   { id: 'legacy236', name: 'Legacy prefix (coin 236)', group: 'standard', template: "m/44'/236'/0'/{index}" },

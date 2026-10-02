@@ -16,7 +16,7 @@ export function Hero({ onStartRecovering }: { onStartRecovering: () => void }) {
   return (
     <section className="hero" aria-labelledby="hero-title">
       <div className="hero-copy">
-        <p className="eyebrow hero-rise" style={rise(0)}>Recover BSV from any seed phrase</p>
+        <p className="eyebrow hero-rise" style={rise(0)}>Recover BSV from a BIP-39 phrase</p>
         <h1 id="hero-title" className="hero-title hero-rise" style={rise(1)}>
           A seed phrase isn't enough. You need the right path.
         </h1>

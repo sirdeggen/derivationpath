@@ -1,3 +1,5 @@
+> Historical review of an earlier implementation. Its approval does not apply to the current code. See [the current adversarial review](SECURITY_REVIEW_2026-09-30.md).
+
 # Security Review Summary
 
 ## 🔒 Security Assessment: APPROVED ✅
@@ -30,7 +32,7 @@ The private key handling in `createIngestTx` is **cryptographically secure** and
 | Path prefix preservation | ✅ SECURE | Test 8: Mixed paths correctly maintained |
 | Signature validation | ✅ SECURE | Test 2, 3: Wrong keys fail cryptographically |
 | Mempool protection | ✅ SECURE | Line 119: Filters spent UTXOs |
-| Fee validation | ✅ SECURE | Lines 220-227: Validates sats/kb < 110 |
+| Fee validation | ✅ SECURE | Checks the final signed fee against the target rate with a narrow tolerance |
 
 ---
 

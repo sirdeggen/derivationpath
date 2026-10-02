@@ -11,7 +11,7 @@ import { useTheme } from './hooks/useTheme';
 import { ArrowUp, ArrowUpRight, Check, Lock, Clock3, Code, MonitorSmartphone, SearchCheck, FileLock2, Gem, KeyRound, Moon, ScanSearch, ShieldAlert, SlidersHorizontal, Sun } from 'lucide-react';
 import { BsvLogo } from './components/BsvLogo';
 import { BalanceCard } from './components/BalanceCard';
-import { DISCLAIMER_SUMMARY, DISCLAIMER_TEXT } from './disclaimer';
+import { DISCLAIMER_SUMMARY, DISCLAIMER_TEXT, RECOVERY_SCHEME_TEXT } from './disclaimer';
 import { MobileTabBar } from './components/MobileTabBar';
 import { Hero } from './components/Hero';
 import { TermsPage } from './components/TermsPage';
@@ -27,7 +27,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 
 const PANELS = [
   { id: 'wallet', info: "Load a wallet and pick which wallet app it came from. Keys are worked out right here in your browser and never leave it.", label: 'Wallet', caption: 'Seed phrase & path', icon: KeyRound, Component: WalletPanel },
-  { id: 'recover', info: "Checks your addresses on the blockchain for coins, then moves everything it finds into your BRC-100 wallet or any address you choose.", label: 'Recover', caption: 'Find & move your coins', icon: ScanSearch, Component: RecoverPanel },
+  { id: 'recover', info: "Checks your addresses on the blockchain for coins, then moves selected coins to a backed-up dated key or any address you choose. It can also recover its own dated outputs.", label: 'Recover', caption: 'Find & move your coins', icon: ScanSearch, Component: RecoverPanel },
   { id: 'send', info: "Pay someone from the address selected on the Wallet tab. You review the transaction before anything is sent.", label: 'Send', caption: 'Pay from this address', icon: ArrowUpRight, Component: SendPanel },
   { id: 'tokens', info: "Shows the NFTs (ordinals) and tokens at this address. They are kept out of every payment so you can't spend them by accident.", label: 'Tokens', caption: 'NFTs & tokens', icon: Gem, Component: TokensPanel },
   { id: 'history', info: "Lists past transactions for your addresses, with a link to view each one on the blockchain.", label: 'History', caption: 'Past transactions', icon: Clock3, Component: HistoryPanel },
@@ -352,6 +352,7 @@ function App() {
           <details className="disclaimer">
             <summary>Read the full disclaimer</summary>
             <p>{DISCLAIMER_TEXT}</p>
+            <p>{RECOVERY_SCHEME_TEXT}</p>
           </details>
           <p><a href="#terms">Terms of Use</a> · <a href="https://github.com/vincemedia/derivationpath" target="_blank" rel="noopener noreferrer">Open source</a></p>
         </footer>

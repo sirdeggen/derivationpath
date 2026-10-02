@@ -1,3 +1,5 @@
+> Historical review of an earlier implementation. Its approval does not apply to the current code. See [the current adversarial review](SECURITY_REVIEW_2026-09-30.md).
+
 # SECURITY REVIEW: Private Key Alignment in createIngestTx
 
 **Reviewer:** Claude Code (BSV SDK Expert)
